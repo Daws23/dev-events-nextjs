@@ -34,20 +34,22 @@ const BookingSchema = new Schema<IBooking>(
   }
 );
 
-// Pre-save hook: validate email and ensure referenced Event exists
+// Pre-save hook: validate email and (when needed) ensure referenced Event exists
 BookingSchema.pre('save', async function (next) {
   try {
     const booking = this as IBooking;
 
-    // Validate email format
+    // Validate email format on every save
     if (!emailRegex.test(booking.email)) {
       return next(new Error('Invalid email format'));
     }
 
-    // Verify that the referenced Event exists before saving the booking
-    const eventExists = await Event.exists({ _id: booking.eventId });
-    if (!eventExists) {
-      return next(new Error('Referenced event does not exist'));
+    // Only hit the DB when the document is new or the eventId changed
+    if (this.isNew || this.isModified('eventId')) {
+      const eventExists = await Event.exists({ _id: booking.eventId });
+      if (!eventExists) {
+        return next(new Error('Referenced event does not exist'));
+      }
     }
 
     return next();

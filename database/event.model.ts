@@ -98,7 +98,7 @@ const EventSchema = new Schema<IEvent>(
 EventSchema.index({ slug: 1 }, { unique: true });
 
 // Pre-save hook: slug generation, date normalization, field validation
-EventSchema.pre('save', function (next) {
+EventSchema.pre('save', async function (next): Promise<any> {
   try {
     const event = this as IEvent;
 
@@ -124,12 +124,18 @@ EventSchema.pre('save', function (next) {
       }
     }
 
-    if (!Array.isArray(event.agenda) || event.agenda.length === 0) {
-      return next(new Error('agenda is required and must be a non-empty array'));
+    // Only validate agenda when creating or when agenda changed
+    if (event.isNew || event.isModified('agenda')) {
+      if (!Array.isArray(event.agenda) || event.agenda.length === 0) {
+        return next(new Error('agenda is required and must be a non-empty array'));
+      }
     }
 
-    if (!Array.isArray(event.tags) || event.tags.length === 0) {
-      return next(new Error('tags is required and must be a non-empty array'));
+    // Only validate tags when creating or when tags changed
+    if (event.isNew || event.isModified('tags')) {
+      if (!Array.isArray(event.tags) || event.tags.length === 0) {
+        return next(new Error('tags is required and must be a non-empty array'));
+      }
     }
 
     // Generate slug only when title changes
@@ -137,15 +143,19 @@ EventSchema.pre('save', function (next) {
       event.slug = slugify(event.title);
     }
 
-    // Normalize date to ISO 8601 format
-    const parsedDate = new Date(event.date);
-    if (Number.isNaN(parsedDate.getTime())) {
-      return next(new Error('Invalid date format; unable to parse date'));
+    // Normalize date to ISO 8601 format only when date changed
+    if (event.isModified('date')) {
+      const parsedDate = new Date(event.date);
+      if (Number.isNaN(parsedDate.getTime())) {
+        return next(new Error('Invalid date format; unable to parse date'));
+      }
+      event.date = parsedDate.toISOString();
     }
-    event.date = parsedDate.toISOString();
 
-    // Normalize time to HH:mm (24-hour) format
-    event.time = normalizeTime(event.time);
+    // Normalize time to HH:mm (24-hour) format only when time changed
+    if (event.isModified('time')) {
+      event.time = normalizeTime(event.time);
+    }
 
     return next();
   } catch (error) {
